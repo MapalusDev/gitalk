@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cari Thread - Gitalk Forum</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
+  <nav class="bg-white/80 dark:bg-gray-800/90 shadow px-3 sm:px-6 py-2 flex justify-between items-center sticky top-0 z-20 border-b border-blue-100 dark:border-gray-700">
+    <a href="index.html" class="flex items-center gap-2 text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300 tracking-tight">
+      <svg width="28" height="28" fill="none" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#2563eb"/><text x="50%" y="55%" text-anchor="middle" fill="#fff" font-size="15" font-family="Arial" dy=".3em">G</text></svg>
+      <span>Gitalk Forum</span>
+    </a>
+    <div class="flex items-center gap-2" id="nav-user">
+      <!-- <button id="dark-toggle" type="button" class="text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600">🌙</button> -->
+      <!-- User info will be injected here -->
+    </div>
+  </nav>
+  <main class="max-w-lg mx-auto mt-6 px-2 sm:px-0">
+    <h1 class="text-xl sm:text-2xl font-bold mb-5 text-blue-800 dark:text-blue-200 tracking-tight">Cari Thread</h1>
+    <form id="search-form" class="flex gap-2 mb-6">
+      <input type="text" id="search-input" placeholder="Ketik judul atau kata kunci..." class="w-full border rounded p-2 text-base dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700" required>
+      <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-sm">Cari</button>
+    </form>
+    <div id="search-results"></div>
+    <div id="extra-threads"></div>
+  </main>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+
+    async function fetchAndStoreUser() {
+  const token = getToken();
+  if (!token) return;
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'token ' + token,
+        'User-Agent': 'GitalkForumApp'
+      }
+    });
+    if (!res.ok) return;
+    const user = await res.json();
+    localStorage.setItem('github_user', JSON.stringify(user));
+    renderNavUser();
+  } catch {}
+}
+
+// --- NAV USER ---
+// --- GET USER ---
+function getUser() {
+  try {
+    const user = localStorage.getItem('github_user');
+    return user ? JSON.parse(user) : null;
+  } catch { return null; }
+}
+function renderNavUser() {
+  const nav = document.getElementById('nav-user');
+  const user = getUser();
+  while (nav.firstChild) nav.removeChild(nav.firstChild);
+  const darkBtn = document.createElement('button');
+  darkBtn.id = 'dark-toggle';
+  darkBtn.type = 'button';
+  darkBtn.className = 'text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600 mr-2';
+  if (localStorage.getItem('theme') === 'dark') {
+    darkBtn.textContent = '☀️';
+  } else {
+    darkBtn.textContent = '🌙';
+  } 
+  nav.appendChild(darkBtn);
+  if (user) {
+    const img = document.createElement('img');
+    img.src = user.avatar_url || user.avatar;
+    img.alt = 'avatar';
+    img.className = 'user-info w-8 h-8 rounded-full border border-blue-200 dark:border-gray-600';
+    nav.appendChild(img);
+    const span = document.createElement('span');
+    span.className = 'user-info font-medium text-gray-700 dark:text-gray-200 text-sm';
+    span.textContent = '@' + (user.login || user.name || user.email);
+    nav.appendChild(span);
+    const create = document.createElement('a');
+    create.href = 'create.html';
+    create.className = 'create-btn bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-xs ml-2';
+    create.textContent = '+ Thread';
+    nav.appendChild(create);
+    const logoutBtn = document.createElement('a');
+    logoutBtn.href = 'logout.html';
+    logoutBtn.className = 'logout-btn text-gray-400 dark:text-gray-400 hover:text-red-500 text-xs ml-2';
+    logoutBtn.textContent = 'Logout';
+    // logoutBtn.onclick = e => { e.preventDefault(); logout(); };
+    nav.appendChild(logoutBtn);
+  } else {
+    const login = document.createElement('a');
+    login.href = 'login.html';
+    login.className = 'login-btn bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-xs ml-2';
+    login.textContent = 'Login dengan GitHub';
+    nav.appendChild(login);
+  }
+}
+
+renderNavUser();
+
+    // --- DARK MODE ---
+    function setDarkModeClass() {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    setDarkModeClass();
+    // --- DARK MODE ---
+    var btn = document.getElementById('dark-toggle');
+    if (btn) btn.onclick = function() {
+      if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        btn.textContent = '🌙';
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        btn.textContent = '☀️';
+      }
+      setDarkModeClass();
+    };
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setDarkModeClass);
+
+    // --- SEARCH LOGIC & THREAD SECTIONS ---
+    const GITHUB_REPO = 'MapalusDev/gitalk';
+    const GITHUB_API = 'https://api.github.com';
+    const resultsDiv = document.getElementById('search-results');
+    const extraDiv = document.getElementById('extra-threads');
+
+    async function fetchThreads(url) {
+      const res = await fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.items || data;
+    }
+
+    async function showExtraThreads() {
+      extraDiv.innerHTML = '<div class="text-gray-500">Memuat rekomendasi thread...</div>';
+      // Terbaru
+      const latestUrl = `${GITHUB_API}/repos/${GITHUB_REPO}/issues?state=open&sort=created&direction=desc&per_page=5`;
+      // Populer (by comments)
+      const popularUrl = `${GITHUB_API}/search/issues?q=repo:${GITHUB_REPO}+type:issue&sort=comments&order=desc&per_page=5`;
+      // Rekomendasi (random from latest)
+      const latestThreads = await fetchThreads(latestUrl);
+      const popularThreads = await fetchThreads(popularUrl);
+      // Pick 3 random from latest for rekomendasi
+      let rekomendasiThreads = [];
+      if (latestThreads.length > 0) {
+        rekomendasiThreads = latestThreads.slice(0);
+        rekomendasiThreads.sort(() => Math.random() - 0.5);
+        rekomendasiThreads = rekomendasiThreads.slice(0, 3);
+      }
+      // Render sections
+      extraDiv.innerHTML = `
+        <section class="mb-8">
+          <h2 class="text-lg font-bold mb-2 text-blue-700 dark:text-blue-200">Rekomendasi Thread</h2>
+          <div id="rekomendasi-list"></div>
+        </section>
+        <section class="mb-8">
+          <h2 class="text-lg font-bold mb-2 text-blue-700 dark:text-blue-200">Thread Populer</h2>
+          <div id="populer-list"></div>
+        </section>
+        <section>
+          <h2 class="text-lg font-bold mb-2 text-blue-700 dark:text-blue-200">Thread Terbaru</h2>
+          <div id="terbaru-list"></div>
+        </section>
+      `;
+      renderThreadList('rekomendasi-list', rekomendasiThreads);
+      renderThreadList('populer-list', popularThreads.slice(0, 3));
+      renderThreadList('terbaru-list', latestThreads.slice(0, 3));
+    }
+
+    function renderThreadList(containerId, threads) {
+      const container = document.getElementById(containerId);
+      if (!threads || threads.length === 0) {
+        container.innerHTML = '<div class="text-gray-500">Tidak ada thread.</div>';
+        return;
+      }
+      container.innerHTML = '';
+      threads.forEach(thread => {
+        const div = document.createElement('div');
+        div.className = 'bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-4 rounded-xl shadow flex flex-col gap-2 mb-4';
+        div.innerHTML = `
+          <a href="post.html?id=${thread.number}" class="text-base font-bold text-blue-700 dark:text-blue-200 hover:underline">${thread.title}</a>
+          <div class="text-xs text-gray-500 dark:text-gray-300">${thread.user ? '@' + thread.user.login : ''} • ${new Date(thread.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Initial load: show extra threads
+    showExtraThreads();
+    
+
+    document.getElementById('search-form').onsubmit = async function(e) {
+      e.preventDefault();
+      const q = document.getElementById('search-input').value.trim();
+      if (!q) return;
+      resultsDiv.innerHTML = '<div class="text-gray-500">Mencari thread...</div>';
+      extraDiv.innerHTML = '';
+      // Search issues (threads) by title/body
+      const url = `${GITHUB_API}/search/issues?q=${encodeURIComponent(q)}+repo:${GITHUB_REPO}+in:title,body+type:issue`;
+      const res = await fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
+      if (!res.ok) {
+        resultsDiv.innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Gagal mencari thread.</div>';
+        showExtraThreads();
+        return;
+      }
+      const data = await res.json();
+      if (!data.items || !data.items.length) {
+        resultsDiv.innerHTML = '<div class="text-gray-500">Tidak ditemukan thread yang cocok.</div>';
+        showExtraThreads();
+        return;
+      }
+      resultsDiv.innerHTML = '';
+      data.items.forEach(thread => {
+        const div = document.createElement('div');
+        div.className = 'bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-4 rounded-xl shadow flex flex-col gap-2 mb-4';
+        div.innerHTML = `
+          <a href="post.html?id=${thread.number}" class="text-lg font-bold text-blue-700 dark:text-blue-200 hover:underline">${thread.title}</a>
+          <div class="text-sm text-gray-500 dark:text-gray-300">${thread.user ? '@' + thread.user.login : ''} • ${new Date(thread.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="prose max-w-none text-gray-900 dark:text-gray-100 text-sm whitespace-pre-line mb-1 break-words">${marked.parse(thread.body || '')}</div>
+        `;
+        resultsDiv.appendChild(div);
+      });
+    };
+  </script>
+</body>
+</html>

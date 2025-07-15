@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logout - Gitalk Forum</title>
+  <script>
+  localStorage.removeItem('github_user');
+  localStorage.removeItem('github_access_token');
+  localStorage.removeItem('oauthio_provider_github');
+  localStorage.removeItem('oauthio_cache');
+  window.location.href = 'login.html';
+  </script>
+</head>
+<body></body>
+</html>

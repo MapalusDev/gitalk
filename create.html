@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buat Thread Baru - Gitalk Forum</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="dark:bg-gray-900 bg-gray-50 min-h-screen">
+  <nav class="bg-white/80 dark:bg-gray-800/90 shadow px-3 sm:px-6 py-2 flex justify-between items-center sticky top-0 z-20 border-b border-blue-100 dark:border-gray-700">
+    <a href="index.html" class="flex items-center gap-2 text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300 tracking-tight">
+      <svg width="28" height="28" fill="none" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#2563eb"/><text x="50%" y="55%" text-anchor="middle" fill="#fff" font-size="15" font-family="Arial" dy=".3em">G</text></svg>
+      <span>Gitalk Forum</span>
+    </a>
+    <div class="flex items-center gap-2" id="nav-user">
+      <button id="dark-toggle" type="button" class="text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600 ml-2">🌙</button>
+      <!-- User info will be injected here -->
+    </div>
+  </nav>
+  <main class="max-w-lg mx-auto mt-6 px-2 sm:px-0">
+    <h1 class="text-xl sm:text-2xl font-bold mb-5 text-blue-800 dark:text-blue-200 tracking-tight">Buat Thread Baru</h1>
+    <div id="error-msg"></div>
+    <form id="thread-form" class="bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-5 rounded-xl shadow flex flex-col gap-3">
+      <input type="text" name="title" required placeholder="Judul thread" class="w-full border rounded p-2 text-base mb-1 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700" maxlength="100">
+      <textarea name="body" required class="w-full border rounded p-2 text-base mb-1 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700" rows="5" placeholder="Isi thread..."></textarea>
+      <input type="file" name="img" accept="image/*" class="text-xs w-full text-center file:text-center dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700">
+      <div class="flex gap-2 items-center mt-2">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-sm">Buat Thread</button>
+        <a href="index.html" class="text-gray-500 dark:text-gray-300 hover:text-blue-500 text-sm">Batal</a>
+      </div>
+    </form>
+  </main>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+
+    // --- CONFIG ---
+    const GITHUB_REPO = 'MapalusDev/gitalk';
+    const GITHUB_API = 'https://api.github.com';
+    // --- AUTH ---
+function getUser() { try { return JSON.parse(localStorage.getItem('github_user')); } catch { return null; } }
+function getToken() { return localStorage.getItem('github_access_token'); }
+// function logout() { localStorage.removeItem('github_user'); localStorage.removeItem('github_access_token'); location.href = 'login.html'; }
+    // --- NAV USER ---
+    function renderNavUser() {
+      const nav = document.getElementById('nav-user');
+      const user = getUser();
+      // nav.innerHTML = '';
+      if (user) {
+        nav.innerHTML += `<img src="${user.avatar_url || user.avatar}" alt="avatar" class="w-8 h-8 rounded-full border border-blue-200 dark:border-gray-600"><span class="font-medium text-gray-700 dark:text-gray-200 text-sm">@${user.login || user.name || user.email}</span><a href="logout.html" class="text-gray-400 hover:text-red-500 text-xs ml-2">Logout</a>`;
+        document.getElementById('thread-form').style.display = '';
+        document.getElementById('error-msg').innerHTML = '';
+      } else {
+        nav.innerHTML += `<a href="login.html" class="bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-xs ml-2">Login dengan GitHub</a>`;
+        document.getElementById('thread-form').style.display = 'none';
+        document.getElementById('error-msg').innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Login untuk membuat thread.</div>';
+      }
+    }
+    renderNavUser();
+    // --- FORM SUBMIT ---
+    document.getElementById('thread-form').onsubmit = async function(e) {
+      e.preventDefault();
+      const token = getToken();
+      if (!token) {
+        document.getElementById('error-msg').innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Login untuk membuat thread.</div>';
+        return;
+      }
+      const title = this.title.value.trim();
+      let body = this.body.value.trim();
+      const imgInput = this.img;
+      if (imgInput.files && imgInput.files[0]) {
+        const file = imgInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(ev) {
+          const b64 = ev.target.result.split(',')[1];
+          const ext = file.name.split('.').pop();
+          const imgName = 'img_' + Date.now() + '.' + ext;
+          const imgPath = 'attachments/' + imgName;
+          const uploadUrl = `${GITHUB_API}/repos/${GITHUB_REPO}/contents/${imgPath}`;
+          const uploadBody = { message: 'upload attachment', content: b64 };
+          const res = await fetch(uploadUrl, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify(uploadBody) });
+          const data = await res.json();
+          if (data.content && data.content.download_url) {
+            body += `\n\n<img width=\"450\" height=\"450\" alt=\"Image\" src=\"${data.content.download_url}\" />`;
+          }
+          submitThread(title, body, token);
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+      submitThread(title, body, token);
+    };
+    async function submitThread(title, body, token) {
+      if (!title || !body) {
+        document.getElementById('error-msg').innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Judul dan isi harus diisi.</div>';
+        return;
+      }
+      const url = `${GITHUB_API}/repos/${GITHUB_REPO}/issues`;
+      const res = await fetch(url, { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify({ title, body }) });
+      if (res.status === 201) {
+        window.location.href = 'index.html';
+      } else {
+        document.getElementById('error-msg').innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Gagal membuat thread.</div>';
+      }
+    }
+    // --- DARK MODE ---
+    (function() {
+      var theme = localStorage.getItem('theme');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+    var btn = document.getElementById('dark-toggle');
+    if (btn) btn.onclick = function() {
+      if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+    };
+  </script>
+</body>
+</html>

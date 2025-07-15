@@ -1,0 +1,370 @@
+<!-- Static HTML, no PHP required -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <title>Thread - Gitalk Forum</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
+  <nav class="bg-white/80 dark:bg-gray-800/90 shadow px-3 sm:px-6 py-2 flex justify-between items-center sticky top-0 z-20 border-b border-blue-100 dark:border-gray-700">
+    <a href="index.html" class="flex items-center gap-2 text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300 tracking-tight">
+      <svg width="28" height="28" fill="none" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#2563eb"/><text x="50%" y="55%" text-anchor="middle" fill="#fff" font-size="15" font-family="Arial" dy=".3em">G</text></svg>
+      <span>Gitalk Forum</span>
+    </a>
+    <div class="flex items-center gap-2" id="nav-user">
+      <button id="dark-toggle" type="button" class="text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600 ml-2">🌙</button>
+
+    </div>
+  </nav>
+  <main class="max-w-lg mx-auto mt-6 px-2 sm:px-0">
+    <div class="bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-5 rounded-2xl shadow-sm mb-6" id="thread-detail">
+      <div class="flex items-center gap-3 mb-2" id="thread-user"></div>
+      <div class="text-lg font-bold text-blue-800 dark:text-blue-200 mb-2 leading-tight break-words" id="thread-title"></div>
+      <div id="thread-body-html" class="prose max-w-none text-gray-900 dark:text-gray-100 text-base mb-1 break-words"></div>
+    </div>
+    <section class="mb-8">
+      <h2 class="text-lg font-bold mb-3 text-blue-700 dark:text-blue-200 border-b pb-2 border-blue-100 dark:border-gray-700">Komentar</h2>
+      <div class="space-y-4" id="comment-list">
+        <div class="text-gray-500">Memuat komentar...</div>
+      </div>
+    </section>
+    <div id="comment-form-wrap"></div>
+  </main>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+    // --- CONFIG ---
+const GITHUB_CLIENT_ID = 'Ov23liIQ6zD6Jpmyb2O6';
+const GITHUB_REPO = 'MapalusDev/gitalk';
+const GITHUB_API = 'https://api.github.com';
+const REDIRECT_URI = window.location.origin + '/gitalk/login.html';
+    // --- AUTH ---
+function getUser() { try { return JSON.parse(localStorage.getItem('github_user')); } catch { return null; } }
+function getGithubToken() { return localStorage.getItem('github_access_token'); }
+// function logout() { localStorage.removeItem('github_user'); localStorage.removeItem('github_access_token'); location.href = 'login.html'; }
+// --- TOKEN COMPAT ---
+function getToken() { return getGithubToken(); }
+    // --- NAV USER ---
+    function renderNavUser() {
+      const nav = document.getElementById('nav-user');
+      const user = getUser();
+      nav.innerHTML = '';
+        const darkBtn = document.createElement('button');
+  darkBtn.id = 'dark-toggle';
+  darkBtn.type = 'button';
+  darkBtn.className = 'text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600 mr-2';
+  if (localStorage.getItem('theme') === 'dark') {
+    darkBtn.textContent = '☀️';
+  } else {
+    darkBtn.textContent = '🌙';
+  } 
+  nav.appendChild(darkBtn);
+      if (user) {
+        nav.innerHTML += `<img src="${user.avatar_url || user.avatar}" alt="avatar" class="w-8 h-8 rounded-full border border-blue-200 dark:border-gray-600"><span class="font-medium text-gray-700 dark:text-gray-200 text-sm">@${user.login || user.name || user.email}</span><a href="logout.html" class="text-gray-400 hover:text-red-500 text-xs ml-2">Logout</a>`;
+      } else {
+        nav.innerHTML += `<a href="login.html" class="bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-xs ml-2">Login dengan GitHub</a>`;
+      }
+    }
+    renderNavUser();
+    // --- GET THREAD ID ---
+    function getThreadId() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('id');
+    }
+    // --- FETCH THREAD ---
+    async function fetchThread(id) {
+      // Ambil github access token dari localStorage
+      let token = getGithubToken();
+      const url = `${GITHUB_API}/repos/${GITHUB_REPO}/issues/${id}`;
+      let res;
+      if (token) {
+        res = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': 'Bearer ' + token,
+            'User-Agent': 'GitalkForumApp'
+          }
+        });
+        if (res.status === 401 || res.status === 403) {
+          // Token invalid/forbidden, fetch ulang tanpa token
+          res = await fetch(url, {
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'GitalkForumApp'
+            }
+          });
+        }
+      } else {
+        res = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'GitalkForumApp'
+          }
+        });
+      }
+      if (!res.ok) return null;
+      return await res.json();
+    }
+    // --- FETCH COMMENTS ---
+    async function fetchComments(id) {
+      // Ambil github access token dari localStorage
+      let token = getGithubToken();
+      const url = `${GITHUB_API}/repos/${GITHUB_REPO}/issues/${id}/comments`;
+      let res;
+      if (token) {
+        res = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'Authorization': 'Bearer ' + token,
+            'User-Agent': 'GitalkForumApp'
+          }
+        });
+        if (res.status === 401 || res.status === 403) {
+          // Token invalid/forbidden, fetch ulang tanpa token
+          res = await fetch(url, {
+            headers: {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'GitalkForumApp'
+            }
+          });
+        }
+      } else {
+        res = await fetch(url, {
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'User-Agent': 'GitalkForumApp'
+          }
+        });
+      }
+      if (!res.ok) return [];
+      return await res.json();
+    }
+    // --- RENDER THREAD ---
+    async function renderThread() {
+      const id = getThreadId();
+      if (!id) { document.getElementById('thread-detail').innerHTML = '<div class="text-red-500">Thread tidak ditemukan.</div>'; return; }
+      const thread = await fetchThread(id);
+      if (!thread) { document.getElementById('thread-detail').innerHTML = '<div class="text-red-500">Thread tidak ditemukan.</div>'; return; }
+      document.getElementById('thread-title').textContent = thread.title;
+      document.getElementById('thread-user').innerHTML = `<img src="${thread.user.avatar_url}" class="w-9 h-9 rounded-full border border-blue-200 dark:border-gray-600"><div class="flex flex-col"><span class="font-semibold text-blue-700 dark:text-blue-200 text-base">@${thread.user.login}</span><span class="text-gray-400 dark:text-gray-300 text-xs mt-0.5">${new Date(thread.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>`;
+      document.getElementById('thread-body-html').innerHTML = marked.parse(thread.body || '');
+    }
+    // --- RENDER COMMENTS ---
+    async function renderComments() {
+      const id = getThreadId();
+      const comments = await fetchComments(id);
+      const list = document.getElementById('comment-list');
+      list.innerHTML = '';
+      if (!comments.length) {
+        list.innerHTML = '<div class="text-gray-500">Belum ada komentar.</div>';
+        return;
+      }
+      comments.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'bg-blue-50/40 dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-4 rounded-xl shadow-sm flex items-start mb-3';
+        div.innerHTML = `
+          <img src="${c.user.avatar_url}" class="w-7 h-7 rounded-full border border-blue-200 dark:border-gray-600 mr-3 mt-1">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center mb-1 gap-2">
+              <span class="font-semibold text-blue-700 dark:text-blue-200 text-sm">@${c.user.login}</span>
+              <span class="text-gray-400 dark:text-gray-300 text-xs ml-2">${new Date(c.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div class="prose max-w-none text-gray-900 dark:text-gray-100 text-sm whitespace-pre-line mb-1 break-words">${marked.parse(c.body || '')}</div>
+            <div class="mt-2 flex gap-2">
+              <button class="reply-btn text-xs px-2 py-1 rounded border border-blue-200 dark:border-gray-600 bg-white/70 dark:bg-gray-700 text-blue-700 dark:text-blue-200 hover:bg-blue-50 dark:hover:bg-gray-600" data-reply-id="${c.id}" type="button">Reply</button>
+            </div>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+      // Event listener tombol reply
+      list.querySelectorAll('.reply-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const replyId = this.getAttribute('data-reply-id');
+          const textarea = document.querySelector('#comment-form textarea[name="comment"]');
+          if (textarea) {
+            if (!textarea.value.startsWith(`[reply:${replyId}]`)) {
+              textarea.value = `[reply:${replyId}] ` + textarea.value;
+              textarea.focus();
+            }
+          }
+        });
+      });
+    }
+    // --- COMMENT FORM ---
+    function renderCommentForm() {
+      const user = getUser();
+      const wrap = document.getElementById('comment-form-wrap');
+      if (!user) {
+        wrap.innerHTML = '<div class="text-center"><a href="login.html" class="text-blue-500">Login untuk berkomentar</a></div>';
+        return;
+      }
+      wrap.innerHTML = `
+        <form id="comment-form" class="bg-white dark:bg-gray-800 border border-blue-100 dark:border-gray-700 p-4 rounded-xl shadow flex flex-col gap-3 mb-8">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <img src="${user.avatar_url || user.avatar}" class="w-8 h-8 rounded-full border border-blue-200 dark:border-gray-600">
+            <span class="font-medium text-blue-700 dark:text-blue-200 text-sm">@${user.login || user.name || user.email}</span>
+          </div>
+          <textarea name="comment" required class="w-full border rounded p-2 mb-1 text-base resize-y bg-gray-50 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700" rows="3" placeholder="Tulis komentar..."></textarea>
+          <input type="file" name="img" accept="image/*" class="mb-1 text-xs dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700">
+          <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-full shadow hover:bg-blue-700 font-semibold text-sm w-full sm:w-auto">Kirim</button>
+        </form>
+        <div id="comment-error"></div>
+      `;
+      document.getElementById('comment-form').onsubmit = async function(e) {
+        e.preventDefault();
+        const id = getThreadId();
+        let body = this.comment.value.trim();
+        // Ambil github access token dari localStorage
+        const token = getGithubToken();
+        // Debug: show token in console
+        console.log('github_access_token:', token);
+        const imgInput = this.img;
+        if (imgInput.files && imgInput.files[0]) {
+          const file = imgInput.files[0];
+          const reader = new FileReader();
+          reader.onload = async function(ev) {
+            const b64 = ev.target.result.split(',')[1];
+            const ext = file.name.split('.').pop();
+            const imgName = 'img_' + Date.now() + '.' + ext;
+            const imgPath = 'attachments/' + imgName;
+            const uploadUrl = `${GITHUB_API}/repos/${GITHUB_REPO}/contents/${imgPath}`;
+            const uploadBody = { message: 'upload attachment', content: b64 };
+            const res = await fetch(uploadUrl, { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify(uploadBody) });
+            const data = await res.json();
+            if (data.content && data.content.download_url) {
+              body += `\n\n<img width=\"450\" height=\"450\" alt=\"Image\" src=\"${data.content.download_url}\" />`;
+            }
+            submitComment(id, body, token);
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+        submitComment(id, body, token);
+      };
+    }
+    async function submitComment(id, body, token) {
+  if (!body) {
+    document.getElementById('comment-error').innerHTML = '<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">Isi komentar harus diisi.</div>';
+    return;
+  }
+  const url = `${GITHUB_API}/repos/${GITHUB_REPO}/issues/${id}/comments`;
+  let res;
+  // Always try with token first if available
+  if (token) {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'GitalkForumApp',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({ body })
+    });
+    if (res.status === 401 || res.status === 403) {
+      // Token invalid, fallback to public (will fail if repo is private)
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'GitalkForumApp'
+        },
+        body: JSON.stringify({ body })
+      });
+    }
+  } else {
+    // No token, try public (will fail if repo is private)
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'GitalkForumApp'
+      },
+      body: JSON.stringify({ body })
+    });
+  }
+  let errorMsg = '';
+  if (res.status === 201) {
+    window.location.reload();
+  } else {
+    let errJson = null;
+    try { errJson = await res.json(); } catch {}
+    if (errJson && errJson.message) {
+      errorMsg = 'Gagal mengirim komentar: ' + errJson.message;
+    } else {
+      errorMsg = 'Gagal mengirim komentar. Status: ' + res.status;
+    }
+    document.getElementById('comment-error').innerHTML = `<div class="bg-red-100 text-red-700 p-2 rounded mb-4 text-center text-sm font-semibold">${errorMsg}</div>`;
+    console.error('GitHub API error:', res.status, errJson);
+  }
+    }
+    // --- INIT ---
+    renderThread();
+    renderComments();
+    renderCommentForm();
+    // --- DARK MODE ---
+    function setDarkModeClass() {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    setDarkModeClass();
+    var btn = document.getElementById('dark-toggle');
+    if (btn) btn.onclick = function() {
+      if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        btn.textContent = '🌙';
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        btn.textContent = '☀️';
+      }
+      setDarkModeClass();
+    };
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setDarkModeClass);
+  </script>
+</body>
+</html>
+    <!-- Semua komentar dan form sekarang dirender dengan JavaScript. -->
+  </main>
+  <!-- <script>
+  // Toggle dark mode (setelah Tailwind siap) pakai class .dark
+  document.addEventListener('DOMContentLoaded', function() {
+    function setDarkModeClass() {
+      if (localStorage.getItem('theme') === 'dark' ||
+          (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    var btn = document.getElementById('dark-toggle');
+    if (btn) btn.addEventListener('click', function() {
+      if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+      } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+      setDarkModeClass();
+    });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setDarkModeClass);
+  });
+  </script> -->
+</body>
+</html>
